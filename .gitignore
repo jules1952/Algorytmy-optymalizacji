@@ -1,0 +1,39 @@
+# Pliki wykonywalne
+*.exe
+*.out
+
+# Pliki obiektowe i wynikowe kompilacji
+*.obj
+*.o
+*.ilk
+*.pdb
+*.idb
+*.lib
+*.dll
+
+# Foldery build
+build/
+Debug/
+Release/
+x64/
+x86/
+
+# VS Code
+.vscode/
+
+# Visual Studio
+*.sln
+*.vcxproj*
+*.opensdf
+*.sdf
+*.db
+*.VC.db
+
+# Logi i pliki tymczasowe
+*.log
+*.tmp
+*.temp
+
+# System Windows
+Thumbs.db
+Desktop.ini
