@@ -20,7 +20,9 @@ struct Result
     int weightSum;
     int volumeSum;
 };
-
+//dużo brdziej rozwinięte niż rand(), profesjonalny, wysokiej jakości generator, 
+//Zapewnia odpowiedni rozkład prawdopodobieństwa przy mutacjach i krzyżowaniu, 
+//dzieki czemu zapobiega błędom statystycznym.
 mt19937 generator(time(0));
 
 int NUM_ITEMS = 70;
@@ -80,6 +82,8 @@ vector<vector<int>> createPopulation()
     return population;
 }
 // Obliczanie sum dla jednego rozwiązania
+//Gdyby nie znak &, C++ kopiowałby całą tablicę 70 przedmiotów przy każdej ocenie każdego osobnika.
+//Referencja sprawia, że program tylko zagląda do pamięci, co drastycznie przyspiesza działanie.
 Result evaluateIndividual(const vector<int>& individual, const vector<Item>& items)
 {
     Result result;
