@@ -30,7 +30,7 @@ int POPULATION_SIZE = 40;
 int GENERATIONS = 100;
 double MUTATION_RATE = 0.05;
 int TOURNAMENT_SIZE = 3;
-double PENALTY = 10.0;
+double PENALTY = 10.0; // kara 
 
 int MAX_WEIGHT = 30;
 int MAX_VOLUME = 40;
@@ -269,6 +269,7 @@ int main()
 
             if (isCorrect(population[i], items) && currentFitness > bestFitness)
             {
+                
                 bestFitness = currentFitness;
                 bestSolution = population[i];
             }
