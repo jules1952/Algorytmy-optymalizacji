@@ -11,81 +11,23 @@
 
 using namespace std;
 
-// ===========================
 // PARAMETRY GLOBALNE
-// ===========================
 mt19937 generator(time(0));
 
-int NUM_ITEMS = 70;
-int POPULATION_SIZE = 40;
-int GENERATIONS = 100;
+int POPULATION_SIZE = 150;
+int GENERATIONS = 500;
 
-double MUTATION_RATE = 0.05;
-double RANDOM_RESET_RATE = 0.10;
+double MUTATION_RATE = 0.08;
+double RANDOM_RESET_RATE = 0.15;
 
 int TOURNAMENT_SIZE = 3;
-double PENALTY = 10.0;
 
 int MAX_WEIGHT = 30;
 int MAX_VOLUME = 40;
 
-int SAME_FITNESS_LIMIT = 10;
+int SAME_FITNESS_LIMIT = 50;
 
-// ===========================
-// TWORZENIE LOSOWYCH PRZEDMIOTÓW
-// ===========================
-vector<Item> generateItems()
-{
-    vector<Item> items;
-
-    uniform_int_distribution<int> valueDist(10, 50);
-    uniform_int_distribution<int> weightDist(1, 10);
-    uniform_int_distribution<int> volumeDist(1, 8);
-
-    for (int i = 0; i < NUM_ITEMS; i++)
-    {
-        Item item;
-        item.value = valueDist(generator);
-        item.weight = weightDist(generator);
-        item.volume = volumeDist(generator);
-
-        items.push_back(item);
-    }
-
-    return items;
-}
-
-// ===========================
-// TWORZENIE POPULACJI
-// ===========================
-static vector<int> createIndividual()
-{
-    vector<int> individual;
-    uniform_int_distribution<int> bitDist(0, 1);
-
-    for (int i = 0; i < NUM_ITEMS; i++)
-    {
-        individual.push_back(bitDist(generator));
-    }
-
-    return individual;
-}
-
-static vector<vector<int>> createPopulation()
-{
-    vector<vector<int>> population;
-
-    for (int i = 0; i < POPULATION_SIZE; i++)
-    {
-        population.push_back(createIndividual());
-    }
-
-    return population;
-}
-
-// ===========================
 // OCENA OSOBNIKA
-// ===========================
 static Result evaluateIndividual(const vector<int>& individual, const vector<Item>& items)
 {
     Result result;
@@ -93,7 +35,7 @@ static Result evaluateIndividual(const vector<int>& individual, const vector<Ite
     result.weightSum = 0;
     result.volumeSum = 0;
 
-    for (int i = 0; i < NUM_ITEMS; i++)
+    for (int i = 0; i < static_cast<int>(individual.size()); i++)
     {
         if (individual[i] == 1)
         {
@@ -106,24 +48,6 @@ static Result evaluateIndividual(const vector<int>& individual, const vector<Ite
     return result;
 }
 
-static double fitness(const vector<int>& individual, const vector<Item>& items)
-{
-    Result result = evaluateIndividual(individual, items);
-
-    int extraWeight = 0;
-    int extraVolume = 0;
-
-    if (result.weightSum > MAX_WEIGHT)
-        extraWeight = result.weightSum - MAX_WEIGHT;
-
-    if (result.volumeSum > MAX_VOLUME)
-        extraVolume = result.volumeSum - MAX_VOLUME;
-
-    double penaltyValue = PENALTY * (extraWeight + extraVolume);
-
-    return result.valueSum - penaltyValue;
-}
-
 static bool isCorrect(const vector<int>& individual, const vector<Item>& items)
 {
     Result result = evaluateIndividual(individual, items);
@@ -131,12 +55,84 @@ static bool isCorrect(const vector<int>& individual, const vector<Item>& items)
     return result.weightSum <= MAX_WEIGHT && result.volumeSum <= MAX_VOLUME;
 }
 
-// ===========================
+static double fitness(const vector<int>& individual, const vector<Item>& items)
+{
+    Result result = evaluateIndividual(individual, items);
+
+    int extraWeight = max(0, result.weightSum - MAX_WEIGHT);
+    int extraVolume = max(0, result.volumeSum - MAX_VOLUME);
+
+    // Bardzo mocna kara dla niepoprawnych rozwiązań
+    if (extraWeight > 0 || extraVolume > 0)
+    {
+        return -10000.0 - 100.0 * (extraWeight + extraVolume);
+    }
+
+    return static_cast<double>(result.valueSum);
+}
+
+// TWORZENIE POPULACJI
+static vector<int> createIndividual(int numItems)
+{
+    vector<int> individual;
+    individual.reserve(numItems);
+
+    // Małe prawdopodobieństwo wybrania przedmiotu
+    uniform_real_distribution<double> dist(0.0, 1.0);
+
+    for (int i = 0; i < numItems; i++)
+    {
+        individual.push_back(dist(generator) < 0.08 ? 1 : 0);
+    }
+
+    return individual;
+}
+
+static vector<vector<int>> createPopulation(int numItems)
+{
+    vector<vector<int>> population;
+    population.reserve(POPULATION_SIZE);
+
+    for (int i = 0; i < POPULATION_SIZE; i++)
+    {
+        population.push_back(createIndividual(numItems));
+    }
+
+    return population;
+}
+
+// NAPRAWA OSOBNIKA
+static void repairIndividual(vector<int>& individual, const vector<Item>& items)
+{
+    Result result = evaluateIndividual(individual, items);
+
+    while (result.weightSum > MAX_WEIGHT || result.volumeSum > MAX_VOLUME)
+    {
+        vector<int> selectedIndices;
+
+        for (int i = 0; i < static_cast<int>(individual.size()); i++)
+        {
+            if (individual[i] == 1)
+            {
+                selectedIndices.push_back(i);
+            }
+        }
+
+        if (selectedIndices.empty())
+            break;
+
+        uniform_int_distribution<int> selectedDist(0, static_cast<int>(selectedIndices.size()) - 1);
+        int removeIndex = selectedIndices[selectedDist(generator)];
+
+        individual[removeIndex] = 0;
+        result = evaluateIndividual(individual, items);
+    }
+}
+
 // SELEKCJA TURNIEJOWA
-// ===========================
 static int tournamentSelectionIndex(const vector<vector<int>>& population, const vector<Item>& items)
 {
-    uniform_int_distribution<int> indexDist(0, POPULATION_SIZE - 1);
+    uniform_int_distribution<int> indexDist(0, static_cast<int>(population.size()) - 1);
 
     int bestIndex = indexDist(generator);
     double bestFitness = fitness(population[bestIndex], items);
@@ -156,15 +152,15 @@ static int tournamentSelectionIndex(const vector<vector<int>>& population, const
     return bestIndex;
 }
 
-// ===========================
 // KRZYŻOWANIA
-// ===========================
 static vector<int> uniformCrossover(const vector<int>& parent1, const vector<int>& parent2)
 {
     vector<int> child;
+    child.reserve(parent1.size());
+
     uniform_int_distribution<int> coin(0, 1);
 
-    for (int i = 0; i < NUM_ITEMS; i++)
+    for (int i = 0; i < static_cast<int>(parent1.size()); i++)
     {
         if (coin(generator) == 0)
             child.push_back(parent1[i]);
@@ -179,7 +175,7 @@ static vector<int> twoPointCrossover(const vector<int>& parent1, const vector<in
 {
     vector<int> child = parent1;
 
-    uniform_int_distribution<int> indexDist(0, NUM_ITEMS - 1);
+    uniform_int_distribution<int> indexDist(0, static_cast<int>(parent1.size()) - 1);
     int point1 = indexDist(generator);
     int point2 = indexDist(generator);
 
@@ -209,21 +205,16 @@ static vector<int> crossoverMix(const vector<int>& parent1, const vector<int>& p
         return twoPointCrossover(parent1, parent2);
 }
 
-// ===========================
 // MUTACJE
-// ===========================
 static void mutate(vector<int>& individual)
 {
     uniform_real_distribution<double> prob(0.0, 1.0);
 
-    for (int i = 0; i < NUM_ITEMS; i++)
+    for (int i = 0; i < static_cast<int>(individual.size()); i++)
     {
         if (prob(generator) < MUTATION_RATE)
         {
-            if (individual[i] == 0)
-                individual[i] = 1;
-            else
-                individual[i] = 0;
+            individual[i] = 1 - individual[i];
         }
     }
 }
@@ -234,7 +225,7 @@ static void randomResetMutation(vector<int>& individual)
 
     if (prob(generator) < RANDOM_RESET_RATE)
     {
-        uniform_int_distribution<int> indexDist(0, NUM_ITEMS - 1);
+        uniform_int_distribution<int> indexDist(0, static_cast<int>(individual.size()) - 1);
         uniform_int_distribution<int> bitDist(0, 1);
 
         int idx = indexDist(generator);
@@ -242,12 +233,10 @@ static void randomResetMutation(vector<int>& individual)
     }
 }
 
-// ===========================
 // SPRAWDZANIE DUPLIKATÓW DZIECI
-// ===========================
 static bool existsInPopulation(const vector<vector<int>>& population, const vector<int>& individual)
 {
-    for (int i = 0; i < population.size(); i++)
+    for (int i = 0; i < static_cast<int>(population.size()); i++)
     {
         if (population[i] == individual)
             return true;
@@ -256,18 +245,16 @@ static bool existsInPopulation(const vector<vector<int>>& population, const vect
     return false;
 }
 
-// ===========================
-// LEPSZY ELITYZM
-// ===========================
+// ELITYZM
 static int getBestEliteIndex(const vector<vector<int>>& population, const vector<Item>& items)
 {
     int bestCorrectIndex = -1;
-    double bestCorrectFitness = -1000000.0;
+    double bestCorrectFitness = -1e18;
 
     int bestAnyIndex = 0;
     double bestAnyFitness = fitness(population[0], items);
 
-    for (int i = 0; i < population.size(); i++)
+    for (int i = 0; i < static_cast<int>(population.size()); i++)
     {
         double currentFitness = fitness(population[i], items);
 
@@ -290,15 +277,13 @@ static int getBestEliteIndex(const vector<vector<int>>& population, const vector
     return bestAnyIndex;
 }
 
-// ===========================
 // WYPISYWANIE
-// ===========================
 void printItems(const vector<Item>& items)
 {
     cout << "PRZEDMIOTY:\n";
     cout << "ID  Value  Weight  Volume\n";
 
-    for (int i = 0; i < items.size(); i++)
+    for (int i = 0; i < static_cast<int>(items.size()); i++)
     {
         cout << i << "   "
              << items[i].value << "      "
@@ -316,14 +301,14 @@ static void printBestSolution(const vector<int>& best, const vector<Item>& items
     cout << "\nNAJLEPSZE ROZWIAZANIE:\n";
     cout << "Chromosom: ";
 
-    for (int i = 0; i < best.size(); i++)
+    for (int i = 0; i < static_cast<int>(best.size()); i++)
     {
         cout << best[i] << " ";
     }
 
     cout << "\nWybrane przedmioty: ";
 
-    for (int i = 0; i < best.size(); i++)
+    for (int i = 0; i < static_cast<int>(best.size()); i++)
     {
         if (best[i] == 1)
             cout << i << " ";
@@ -339,17 +324,23 @@ static void printBestSolution(const vector<int>& best, const vector<Item>& items
         cout << "\nRozwiazanie poprawne: NIE\n";
 }
 
-// ===========================
 // GŁÓWNA LOGIKA ALGORYTMU
-// ===========================
 void runAlgorithm(const vector<Item>& items)
 {
-    vector<vector<int>> population = createPopulation();
+    int numItems = static_cast<int>(items.size());
+
+    vector<vector<int>> population = createPopulation(numItems);
+
+    // Dodatkowa naprawa populacji startowej
+    for (int i = 0; i < static_cast<int>(population.size()); i++)
+    {
+        repairIndividual(population[i], items);
+    }
 
     vector<int> bestSolution;
-    double bestFitness = -1000000.0;
+    double bestFitness = -1e18;
 
-    double lastBestFitness = -1000000.0;
+    double lastBestFitness = -1e18;
     int sameFitnessCounter = 0;
 
     printItems(items);
@@ -357,6 +348,7 @@ void runAlgorithm(const vector<Item>& items)
     for (int generation = 0; generation < GENERATIONS; generation++)
     {
         vector<vector<int>> newPopulation;
+        newPopulation.reserve(POPULATION_SIZE);
 
         int eliteIndex = getBestEliteIndex(population, items);
         newPopulation.push_back(population[eliteIndex]);
@@ -366,7 +358,7 @@ void runAlgorithm(const vector<Item>& items)
         int attempts = 0;
         int maxAttempts = 1000;
 
-        while (newPopulation.size() < POPULATION_SIZE && attempts < maxAttempts)
+        while (static_cast<int>(newPopulation.size()) < POPULATION_SIZE && attempts < maxAttempts)
         {
             attempts++;
 
@@ -390,6 +382,7 @@ void runAlgorithm(const vector<Item>& items)
             vector<int> child = crossoverMix(population[idx1], population[idx2]);
             mutate(child);
             randomResetMutation(child);
+            repairIndividual(child, items);
 
             if (!existsInPopulation(newPopulation, child))
             {
@@ -400,7 +393,7 @@ void runAlgorithm(const vector<Item>& items)
         int extraAttempts = 0;
         int maxExtraAttempts = 5000;
 
-        while (newPopulation.size() < POPULATION_SIZE && extraAttempts < maxExtraAttempts)
+        while (static_cast<int>(newPopulation.size()) < POPULATION_SIZE && extraAttempts < maxExtraAttempts)
         {
             extraAttempts++;
 
@@ -415,6 +408,7 @@ void runAlgorithm(const vector<Item>& items)
             vector<int> child = crossoverMix(population[idx1], population[idx2]);
             mutate(child);
             randomResetMutation(child);
+            repairIndividual(child, items);
 
             if (!existsInPopulation(newPopulation, child))
             {
@@ -422,7 +416,7 @@ void runAlgorithm(const vector<Item>& items)
             }
         }
 
-        while (newPopulation.size() < POPULATION_SIZE)
+        while (static_cast<int>(newPopulation.size()) < POPULATION_SIZE)
         {
             int idx1 = tournamentSelectionIndex(population, items);
             int idx2 = tournamentSelectionIndex(population, items);
@@ -435,13 +429,14 @@ void runAlgorithm(const vector<Item>& items)
             vector<int> child = crossoverMix(population[idx1], population[idx2]);
             mutate(child);
             randomResetMutation(child);
+            repairIndividual(child, items);
 
             newPopulation.push_back(child);
         }
 
         population = newPopulation;
 
-        for (int i = 0; i < POPULATION_SIZE; i++)
+        for (int i = 0; i < static_cast<int>(population.size()); i++)
         {
             double currentFitness = fitness(population[i], items);
 
