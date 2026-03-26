@@ -20,7 +20,7 @@ int main()
         return 1;
     }
 
-    runAlgorithm(items);
+    runAlgorithm(items, true);
 
     return 0;
 }

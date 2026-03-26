@@ -17,6 +17,16 @@ struct Result
     int volumeSum;
 };
 
+struct AlgorithmStats
+{
+    bool foundCorrect;
+    double bestFitness;
+    int bestValue;
+    int bestWeight;
+    int bestVolume;
+    int generationsUsed;
+};
+
 // Parametry algorytmu
 extern int POPULATION_SIZE;
 extern int GENERATIONS;
@@ -33,6 +43,6 @@ extern int SAME_FITNESS_LIMIT;
 
 // Funkcje
 void printItems(const std::vector<Item>& items);
-void runAlgorithm(const std::vector<Item>& items);
+AlgorithmStats runAlgorithm(const std::vector<Item>& items, bool printLogs = true);
 
 #endif

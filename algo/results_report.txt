@@ -1,0 +1,11 @@
+file_name: items_70.csv
+runs: 100
+success_count: 100
+success_rate: 100
+avg_fitness: 1203.8
+min_fitness: 1171
+max_fitness: 1244
+avg_value: 1203.8
+min_value: 1171
+max_value: 1244
+avg_generations: 125.48

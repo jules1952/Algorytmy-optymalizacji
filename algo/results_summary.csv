@@ -1,0 +1,2 @@
+file_name,runs,success_count,success_rate,avg_fitness,min_fitness,max_fitness,avg_value,min_value,max_value,avg_generations
+items_70.csv,100,100,100,1203.8,1171,1244,1203.8,1171,1244,125.48

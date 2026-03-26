@@ -14,16 +14,16 @@ using namespace std;
 // PARAMETRY GLOBALNE
 mt19937 generator(time(0));
 
-int POPULATION_SIZE = 150;
+int POPULATION_SIZE = 200;
 int GENERATIONS = 500;
 
 double MUTATION_RATE = 0.08;
 double RANDOM_RESET_RATE = 0.15;
 
-int TOURNAMENT_SIZE = 3;
+int TOURNAMENT_SIZE = 7;
 
-int MAX_WEIGHT = 30;
-int MAX_VOLUME = 40;
+int MAX_WEIGHT = 150;
+int MAX_VOLUME = 200;
 
 int SAME_FITNESS_LIMIT = 50;
 
@@ -62,7 +62,6 @@ static double fitness(const vector<int>& individual, const vector<Item>& items)
     int extraWeight = max(0, result.weightSum - MAX_WEIGHT);
     int extraVolume = max(0, result.volumeSum - MAX_VOLUME);
 
-    // Bardzo mocna kara dla niepoprawnych rozwiązań
     if (extraWeight > 0 || extraVolume > 0)
     {
         return -10000.0 - 100.0 * (extraWeight + extraVolume);
@@ -77,7 +76,6 @@ static vector<int> createIndividual(int numItems)
     vector<int> individual;
     individual.reserve(numItems);
 
-    // Małe prawdopodobieństwo wybrania przedmiotu
     uniform_real_distribution<double> dist(0.0, 1.0);
 
     for (int i = 0; i < numItems; i++)
@@ -325,13 +323,12 @@ static void printBestSolution(const vector<int>& best, const vector<Item>& items
 }
 
 // GŁÓWNA LOGIKA ALGORYTMU
-void runAlgorithm(const vector<Item>& items)
+AlgorithmStats runAlgorithm(const vector<Item>& items, bool printLogs)
 {
     int numItems = static_cast<int>(items.size());
 
     vector<vector<int>> population = createPopulation(numItems);
 
-    // Dodatkowa naprawa populacji startowej
     for (int i = 0; i < static_cast<int>(population.size()); i++)
     {
         repairIndividual(population[i], items);
@@ -342,11 +339,15 @@ void runAlgorithm(const vector<Item>& items)
 
     double lastBestFitness = -1e18;
     int sameFitnessCounter = 0;
+    int generationsUsed = 0;
 
-    printItems(items);
+    if (printLogs)
+        printItems(items);
 
     for (int generation = 0; generation < GENERATIONS; generation++)
     {
+        generationsUsed = generation + 1;
+
         vector<vector<int>> newPopulation;
         newPopulation.reserve(POPULATION_SIZE);
 
@@ -373,9 +374,7 @@ void runAlgorithm(const vector<Item>& items)
             pair<int, int> parentPair = {min(idx1, idx2), max(idx1, idx2)};
 
             if (usedPairs.count(parentPair) > 0)
-            {
                 continue;
-            }
 
             usedPairs.insert(parentPair);
 
@@ -385,9 +384,7 @@ void runAlgorithm(const vector<Item>& items)
             repairIndividual(child, items);
 
             if (!existsInPopulation(newPopulation, child))
-            {
                 newPopulation.push_back(child);
-            }
         }
 
         int extraAttempts = 0;
@@ -411,9 +408,7 @@ void runAlgorithm(const vector<Item>& items)
             repairIndividual(child, items);
 
             if (!existsInPopulation(newPopulation, child))
-            {
                 newPopulation.push_back(child);
-            }
         }
 
         while (static_cast<int>(newPopulation.size()) < POPULATION_SIZE)
@@ -457,35 +452,65 @@ void runAlgorithm(const vector<Item>& items)
             lastBestFitness = bestFitness;
         }
 
-        if (bestSolution.empty())
+        if (printLogs)
         {
-            cout << "Generacja " << generation + 1
-                 << " | brak poprawnego rozwiazania\n";
-        }
-        else
-        {
-            cout << "Generacja " << generation + 1
-                 << " | najlepszy fitness = " << bestFitness
-                 << " | ten sam wynik od " << sameFitnessCounter
-                 << " generacji\n";
+            if (bestSolution.empty())
+            {
+                cout << "Generacja " << generation + 1
+                     << " | brak poprawnego rozwiazania\n";
+            }
+            else
+            {
+                cout << "Generacja " << generation + 1
+                     << " | najlepszy fitness = " << bestFitness
+                     << " | ten sam wynik od " << sameFitnessCounter
+                     << " generacji\n";
+            }
         }
 
         if (!bestSolution.empty() && sameFitnessCounter >= SAME_FITNESS_LIMIT)
         {
-            cout << "\nNajlepszy wynik powtarza sie od "
-                 << SAME_FITNESS_LIMIT
-                 << " generacji. Koniec algorytmu.\n";
+            if (printLogs)
+            {
+                cout << "\nNajlepszy wynik powtarza sie od "
+                     << SAME_FITNESS_LIMIT
+                     << " generacji. Koniec algorytmu.\n";
+            }
             break;
         }
     }
 
+    AlgorithmStats stats{};
+
     if (bestSolution.empty())
     {
-        cout << "\nNie znaleziono poprawnego rozwiazania.\n";
+        stats.foundCorrect = false;
+        stats.bestFitness = -1e18;
+        stats.bestValue = 0;
+        stats.bestWeight = 0;
+        stats.bestVolume = 0;
+        stats.generationsUsed = generationsUsed;
+
+        if (printLogs)
+            cout << "\nNie znaleziono poprawnego rozwiazania.\n";
     }
     else
     {
-        cout << "\nNajlepsze znalezione rozwiazanie:\n";
-        printBestSolution(bestSolution, items);
+        Result result = evaluateIndividual(bestSolution, items);
+
+        stats.foundCorrect = true;
+        stats.bestFitness = bestFitness;
+        stats.bestValue = result.valueSum;
+        stats.bestWeight = result.weightSum;
+        stats.bestVolume = result.volumeSum;
+        stats.generationsUsed = generationsUsed;
+
+        if (printLogs)
+        {
+            cout << "\nNajlepsze znalezione rozwiazanie:\n";
+            printBestSolution(bestSolution, items);
+        }
     }
+
+    return stats;
 }
