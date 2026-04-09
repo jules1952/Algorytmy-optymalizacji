@@ -86,12 +86,12 @@ static vector<int> createIndividual(int numItems)
     return individual;
 }
 
-static vector<vector<int>> createPopulation(int numItems)
+static vector<vector<int>> createPopulation(int numItems, int populationSize)
 {
     vector<vector<int>> population;
-    population.reserve(POPULATION_SIZE);
+    population.reserve(populationSize);
 
-    for (int i = 0; i < POPULATION_SIZE; i++)
+    for (int i = 0; i < populationSize; i++)
     {
         population.push_back(createIndividual(numItems));
     }
@@ -323,11 +323,11 @@ static void printBestSolution(const vector<int>& best, const vector<Item>& items
 }
 
 // GŁÓWNA LOGIKA ALGORYTMU
-AlgorithmStats runAlgorithm(const vector<Item>& items, bool printLogs)
+AlgorithmStats runAlgorithm(const vector<Item>& items, bool printLogs, const GAConfig& config)
 {
     int numItems = static_cast<int>(items.size());
 
-    vector<vector<int>> population = createPopulation(numItems);
+    vector<vector<int>> population = createPopulation(numItems, config.populationSize);
 
     for (int i = 0; i < static_cast<int>(population.size()); i++)
     {
@@ -349,7 +349,7 @@ AlgorithmStats runAlgorithm(const vector<Item>& items, bool printLogs)
         generationsUsed = generation + 1;
 
         vector<vector<int>> newPopulation;
-        newPopulation.reserve(POPULATION_SIZE);
+        newPopulation.reserve(config.populationSize);
 
         int eliteIndex = getBestEliteIndex(population, items);
         newPopulation.push_back(population[eliteIndex]);
@@ -359,7 +359,7 @@ AlgorithmStats runAlgorithm(const vector<Item>& items, bool printLogs)
         int attempts = 0;
         int maxAttempts = 1000;
 
-        while (static_cast<int>(newPopulation.size()) < POPULATION_SIZE && attempts < maxAttempts)
+        while (static_cast<int>(newPopulation.size()) < config.populationSize && attempts < maxAttempts)
         {
             attempts++;
 
@@ -378,9 +378,16 @@ AlgorithmStats runAlgorithm(const vector<Item>& items, bool printLogs)
 
             usedPairs.insert(parentPair);
 
-            vector<int> child = crossoverMix(population[idx1], population[idx2]);
-            mutate(child);
-            randomResetMutation(child);
+            vector<int> child;
+
+            if (config.crossoverType == UNIFORM)
+                child = uniformCrossover(population[idx1], population[idx2]);
+            else
+                child = twoPointCrossover(population[idx1], population[idx2]);
+            if (config.mutationType == BIT_FLIP)
+                mutate(child);
+            else
+                randomResetMutation(child);
             repairIndividual(child, items);
 
             if (!existsInPopulation(newPopulation, child))
@@ -390,7 +397,7 @@ AlgorithmStats runAlgorithm(const vector<Item>& items, bool printLogs)
         int extraAttempts = 0;
         int maxExtraAttempts = 5000;
 
-        while (static_cast<int>(newPopulation.size()) < POPULATION_SIZE && extraAttempts < maxExtraAttempts)
+        while (static_cast<int>(newPopulation.size()) < config.populationSize && extraAttempts < maxExtraAttempts)
         {
             extraAttempts++;
 
@@ -402,16 +409,23 @@ AlgorithmStats runAlgorithm(const vector<Item>& items, bool printLogs)
                 idx2 = tournamentSelectionIndex(population, items);
             }
 
-            vector<int> child = crossoverMix(population[idx1], population[idx2]);
-            mutate(child);
-            randomResetMutation(child);
+            vector<int> child;
+
+            if (config.crossoverType == UNIFORM)
+                child = uniformCrossover(population[idx1], population[idx2]);
+            else
+                child = twoPointCrossover(population[idx1], population[idx2]);
+            if (config.mutationType == BIT_FLIP)
+                mutate(child);
+            else
+                randomResetMutation(child);
             repairIndividual(child, items);
 
             if (!existsInPopulation(newPopulation, child))
                 newPopulation.push_back(child);
         }
 
-        while (static_cast<int>(newPopulation.size()) < POPULATION_SIZE)
+        while (static_cast<int>(newPopulation.size()) < config.populationSize)
         {
             int idx1 = tournamentSelectionIndex(population, items);
             int idx2 = tournamentSelectionIndex(population, items);
@@ -421,9 +435,16 @@ AlgorithmStats runAlgorithm(const vector<Item>& items, bool printLogs)
                 idx2 = tournamentSelectionIndex(population, items);
             }
 
-            vector<int> child = crossoverMix(population[idx1], population[idx2]);
-            mutate(child);
-            randomResetMutation(child);
+            vector<int> child;
+
+            if (config.crossoverType == UNIFORM)
+                child = uniformCrossover(population[idx1], population[idx2]);
+            else
+                child = twoPointCrossover(population[idx1], population[idx2]);
+            if (config.mutationType == BIT_FLIP)
+                mutate(child);
+            else
+                randomResetMutation(child);
             repairIndividual(child, items);
 
             newPopulation.push_back(child);

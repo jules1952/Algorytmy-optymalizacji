@@ -5,192 +5,106 @@
 #include <fstream>
 #include <string>
 #include <limits>
+#include <vector>
+#include <iomanip>
 
 using namespace std;
 
-int main()
-{
-    string filename;
-    cout << "Podaj nazwe pliku CSV do badan: ";
-    cin >> filename;
+// Funkcje pomocnicze do formatowania nazw w CSV
+string crossoverToStr(CrossoverType t) {
+    return t == UNIFORM ? "uniform" : "two_point";
+}
 
-    vector<Item> items = loadItemsFromCSV(filename);
+string mutationToStr(MutationType t) {
+    return t == BIT_FLIP ? "bit_flip" : "random_reset";
+}
 
-    if (items.empty())
-    {
-        cout << "Nie udalo sie wczytac danych.\n";
-        return 1;
-    }
+int main() {
+    // Lista plików wygenerowanych przez generate_data.cpp
+    vector<string> testFiles = {
+        "items_70.csv",
+        "items_100.csv",
+        "items_150.csv",
+        "items_200.csv",
+        "items_500.csv"
+    };
 
-    const int RUNS = 100;
+    const int RUNS = 100; // Liczba powtórzeń dla każdego testu
+    vector<int> populations = {50, 100, 200, 500}; // Eksperyment 2
+    vector<CrossoverType> crossovers = {UNIFORM, TWO_POINT}; // Eksperyment 1
+    vector<MutationType> mutations = {BIT_FLIP, RANDOM_RESET}; // Eksperyment 1
 
+    // Plik z surowymi danymi (wszystkie 100 przebiegów)
     ofstream details("results_details.csv");
-    if (!details)
-    {
-        cout << "Nie mozna utworzyc results_details.csv\n";
+    // Plik ze średnimi (idealny do tabel w LaTeX)
+    ofstream summary("results_summary.csv");
+
+    if (!details || !summary) {
+        cout << "Blad tworzenia plikow wynikowych!\n";
         return 1;
     }
 
-    details << "run,found_correct,best_fitness,best_value,best_weight,best_volume,generations_used\n";
+    // Nagłówki plików CSV
+    details << "file,population,crossover,mutation,run,found_correct,best_value,generations_used\n";
+    summary << "file,population,crossover,mutation,success_rate,avg_value,avg_generations,max_value\n";
 
-    double sumFitness = 0.0;
-    double minFitness = numeric_limits<double>::max();
-    double maxFitness = numeric_limits<double>::lowest();
+    for (const string& filename : testFiles) {
+        vector<Item> items = loadItemsFromCSV(filename);
+        if (items.empty()) continue;
 
-    double sumValue = 0.0;
-    int minValue = numeric_limits<int>::max();
-    int maxValue = numeric_limits<int>::lowest();
+        cout << "\n>>> ANALIZA PLIKU: " << filename << " <<<\n";
 
-    double sumGenerations = 0.0;
-    int successCount = 0;
+        for (int pop : populations) {
+            for (auto cross : crossovers) {
+                for (auto mut : mutations) {
 
-    for (int run = 1; run <= RUNS; run++)
-    {
-        AlgorithmStats stats = runAlgorithm(items, false);
+                    cout << "Test: Pop=" << pop << " Cross=" << crossoverToStr(cross) << " Mut=" << mutationToStr(mut) << endl;
 
-        details << run << ","
-                << (stats.foundCorrect ? 1 : 0) << ","
-                << stats.bestFitness << ","
-                << stats.bestValue << ","
-                << stats.bestWeight << ","
-                << stats.bestVolume << ","
-                << stats.generationsUsed << "\n";
+                    double totalValue = 0.0;
+                    double totalGenerations = 0.0;
+                    int successCount = 0;
+                    int maxVal = 0;
 
-        if (stats.foundCorrect)
-        {
-            successCount++;
-            sumFitness += stats.bestFitness;
-            sumValue += stats.bestValue;
-            sumGenerations += stats.generationsUsed;
+                    GAConfig config;
+                    config.populationSize = pop;
+                    config.crossoverType = cross;
+                    config.mutationType = mut;
 
-            if (stats.bestFitness < minFitness) minFitness = stats.bestFitness;
-            if (stats.bestFitness > maxFitness) maxFitness = stats.bestFitness;
+                    for (int run = 1; run <= RUNS; run++) {
+                        AlgorithmStats stats = runAlgorithm(items, false, config);
 
-            if (stats.bestValue < minValue) minValue = stats.bestValue;
-            if (stats.bestValue > maxValue) maxValue = stats.bestValue;
+                        // Zapis surowych danych
+                        details << filename << "," << pop << "," << crossoverToStr(cross) << ","
+                                << mutationToStr(mut) << "," << run << ","
+                                << (stats.foundCorrect ? 1 : 0) << "," << stats.bestValue << ","
+                                << stats.generationsUsed << "\n";
+
+                        if (stats.foundCorrect) {
+                            successCount++;
+                            totalValue += stats.bestValue;
+                            totalGenerations += stats.generationsUsed;
+                            if (stats.bestValue > maxVal) maxVal = stats.bestValue;
+                        }
+
+                        if (run % 10 == 0) cout << "Progress: " << run << "%\r" << flush;
+                    }
+
+                    // Obliczanie średnich i zapis do podsumowania
+                    double successRate = (double)successCount / RUNS * 100.0;
+                    double avgValue = (successCount > 0) ? totalValue / successCount : 0;
+                    double avgGens = (successCount > 0) ? totalGenerations / successCount : 0;
+
+                    summary << filename << "," << pop << "," << crossoverToStr(cross) << ","
+                            << mutationToStr(mut) << "," << fixed << setprecision(2)
+                            << successRate << "," << avgValue << "," << avgGens << "," << maxVal << "\n";
+                }
+            }
         }
-
-        cout << "Run " << run << "/" << RUNS << " zakonczony\n";
     }
 
     details.close();
-
-    ofstream summary("results_summary.csv");
-    if (!summary)
-    {
-        cout << "Nie mozna utworzyc results_summary.csv\n";
-        return 1;
-    }
-
-    summary << "file_name,runs,success_count,success_rate,avg_fitness,min_fitness,max_fitness,avg_value,min_value,max_value,avg_generations\n";
-
-    if (successCount > 0)
-    {
-        summary << filename << ","
-                << RUNS << ","
-                << successCount << ","
-                << (100.0 * successCount / RUNS) << ","
-                << (sumFitness / successCount) << ","
-                << minFitness << ","
-                << maxFitness << ","
-                << (sumValue / successCount) << ","
-                << minValue << ","
-                << maxValue << ","
-                << (sumGenerations / successCount) << "\n";
-    }
-    else
-    {
-        summary << filename << ","
-                << RUNS << ","
-                << 0 << ","
-                << 0 << ","
-                << 0 << ","
-                << 0 << ","
-                << 0 << ","
-                << 0 << ","
-                << 0 << ","
-                << 0 << ","
-                << 0 << "\n";
-    }
-
     summary.close();
 
-    ofstream report("results_report.txt");
-    if (!report)
-    {
-        cout << "Nie mozna utworzyc results_report.txt\n";
-        return 1;
-    }
-
-    report << "file_name: " << filename << "\n";
-    report << "runs: " << RUNS << "\n";
-    report << "success_count: " << successCount << "\n";
-    report << "success_rate: " << (100.0 * successCount / RUNS) << "\n";
-
-    if (successCount > 0)
-    {
-        report << "avg_fitness: " << (sumFitness / successCount) << "\n";
-        report << "min_fitness: " << minFitness << "\n";
-        report << "max_fitness: " << maxFitness << "\n";
-        report << "avg_value: " << (sumValue / successCount) << "\n";
-        report << "min_value: " << minValue << "\n";
-        report << "max_value: " << maxValue << "\n";
-        report << "avg_generations: " << (sumGenerations / successCount) << "\n";
-    }
-    else
-    {
-        report << "avg_fitness: 0\n";
-        report << "min_fitness: 0\n";
-        report << "max_fitness: 0\n";
-        report << "avg_value: 0\n";
-        report << "min_value: 0\n";
-        report << "max_value: 0\n";
-        report << "avg_generations: 0\n";
-    }
-
-    report.close();
-
-    ofstream pretty("results_pretty.csv");
-    if (!pretty)
-    {
-        cout << "Nie mozna utworzyc results_pretty.csv\n";
-        return 1;
-    }
-
-    pretty << "metric,value\n";
-    pretty << "file_name," << filename << "\n";
-    pretty << "runs," << RUNS << "\n";
-    pretty << "success_count," << successCount << "\n";
-    pretty << "success_rate," << (100.0 * successCount / RUNS) << "\n";
-
-    if (successCount > 0)
-    {
-        pretty << "avg_fitness," << (sumFitness / successCount) << "\n";
-        pretty << "min_fitness," << minFitness << "\n";
-        pretty << "max_fitness," << maxFitness << "\n";
-        pretty << "avg_value," << (sumValue / successCount) << "\n";
-        pretty << "min_value," << minValue << "\n";
-        pretty << "max_value," << maxValue << "\n";
-        pretty << "avg_generations," << (sumGenerations / successCount) << "\n";
-    }
-    else
-    {
-        pretty << "avg_fitness,0\n";
-        pretty << "min_fitness,0\n";
-        pretty << "max_fitness,0\n";
-        pretty << "avg_value,0\n";
-        pretty << "min_value,0\n";
-        pretty << "max_value,0\n";
-        pretty << "avg_generations,0\n";
-    }
-
-    pretty.close();
-
-    cout << "\nZapisano:\n";
-    cout << "- results_details.csv\n";
-    cout << "- results_summary.csv\n";
-    cout << "- results_report.txt\n";
-    cout << "- results_pretty.csv\n";
-
+    cout << "\nZakonczono! Wyniki zapisano w results_summary.csv i results_details.csv\n";
     return 0;
 }

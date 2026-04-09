@@ -2,7 +2,7 @@
 #define GENETIC_ALGORITHM_H
 
 #include <vector>
-
+#include <string>
 struct Item
 {
     int value;
@@ -27,6 +27,22 @@ struct AlgorithmStats
     int generationsUsed;
 };
 
+enum CrossoverType {
+    UNIFORM,
+    TWO_POINT
+};
+
+enum MutationType {
+    BIT_FLIP,
+    RANDOM_RESET
+};
+
+struct GAConfig {
+    int populationSize;
+    CrossoverType crossoverType;
+    MutationType mutationType;
+};
+
 // Parametry algorytmu
 extern int POPULATION_SIZE;
 extern int GENERATIONS;
@@ -43,6 +59,5 @@ extern int SAME_FITNESS_LIMIT;
 
 // Funkcje
 void printItems(const std::vector<Item>& items);
-AlgorithmStats runAlgorithm(const std::vector<Item>& items, bool printLogs = true);
-
+AlgorithmStats runAlgorithm(const std::vector<Item>& items, bool printLogs, const GAConfig& config);
 #endif
