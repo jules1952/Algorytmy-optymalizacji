@@ -14,7 +14,7 @@ struct Item
     int volume;
 };
 
-mt19937 generator(time(0));
+mt19937 generator(42);
 
 // Funkcja generuje tyle przedmiotow, ile podasz w argumencie
 vector<Item> generateItems(int numItems)

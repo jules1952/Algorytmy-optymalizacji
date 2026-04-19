@@ -12,7 +12,7 @@
 using namespace std;
 
 // PARAMETRY GLOBALNE
-mt19937 generator(time(0));
+mt19937 generator(42);
 
 int POPULATION_SIZE = 200;
 int GENERATIONS = 500;

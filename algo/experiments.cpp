@@ -1,16 +1,55 @@
 #include "genetic_algorithm.h"
 #include "csv_utils.h"
+#include <omp.h>
 
 #include <iostream>
 #include <fstream>
 #include <string>
-#include <limits>
 #include <vector>
 #include <iomanip>
+#include <chrono>
+#include <mutex>
 
 using namespace std;
+using namespace chrono;
 
-// Funkcje pomocnicze do formatowania nazw w CSV
+// =========================
+// 🔥 GLOBAL SAFETY / LOGGING
+// =========================
+std::mutex csvMutex;
+
+
+
+
+// =========================
+// 🔥 TIME
+// =========================
+long long nowMs() {
+    return duration_cast<milliseconds>(
+        high_resolution_clock::now().time_since_epoch()
+    ).count();
+}
+
+
+
+// =========================
+// 🔥 ETA
+// =========================
+void printETA(int done, int total, long long startMs) {
+    if (done == 0) return;
+
+    long long now = nowMs();
+    double elapsed = (now - startMs) / 1000.0;
+
+    double rate = done / elapsed;
+    double remaining = (total - done) / rate;
+
+    cout << "\nETA: " << remaining / 60.0 << " min\n";
+}
+
+// =========================
+// helpers
+// =========================
 string crossoverToStr(CrossoverType t) {
     return t == UNIFORM ? "uniform" : "two_point";
 }
@@ -19,8 +58,25 @@ string mutationToStr(MutationType t) {
     return t == BIT_FLIP ? "bit_flip" : "random_reset";
 }
 
+// =========================
+// PROGRESS
+// =========================
+void showProgress(const string& label, int i, int total) {
+    if (i % 10 == 0) {
+        cout << label
+             << " progress: " << i << "/" << total
+             << " (" << (i * 100 / total) << "%)\r"
+             << flush;
+    }
+}
+
+// =========================
+// MAIN
+// =========================
 int main() {
-    // Lista plików wygenerowanych przez generate_data.cpp
+
+    ios::sync_with_stdio(false);
+
     vector<string> testFiles = {
         "items_70.csv",
         "items_100.csv",
@@ -29,82 +85,307 @@ int main() {
         "items_500.csv"
     };
 
-    const int RUNS = 100; // Liczba powtórzeń dla każdego testu
-    vector<int> populations = {50, 100, 200, 500}; // Eksperyment 2
-    vector<CrossoverType> crossovers = {UNIFORM, TWO_POINT}; // Eksperyment 1
-    vector<MutationType> mutations = {BIT_FLIP, RANDOM_RESET}; // Eksperyment 1
+    const int RUNS = 100;
 
-    // Plik z surowymi danymi (wszystkie 100 przebiegów)
-    ofstream details("results_details.csv");
-    // Plik ze średnimi (idealny do tabel w LaTeX)
-    ofstream summary("results_summary.csv");
+    vector<int> populations = {50, 100, 200, 500};
+    vector<CrossoverType> crossovers = {UNIFORM, TWO_POINT};
+    vector<MutationType> mutations = {BIT_FLIP, RANDOM_RESET};
 
-    if (!details || !summary) {
-        cout << "Blad tworzenia plikow wynikowych!\n";
-        return 1;
-    }
+    vector<double> mutationRates = {0.01, 0.05, 0.1, 0.2};
+    vector<int> tournamentSizes = {3, 5, 7, 10};
+    vector<int> stopLimits = {20, 50, 100};
 
-    // Nagłówki plików CSV
-    details << "file,population,crossover,mutation,run,found_correct,best_value,generations_used\n";
-    summary << "file,population,crossover,mutation,success_rate,avg_value,avg_generations,max_value\n";
+    ofstream summary("results_summary.csv", ios::out);
+    summary << "experiment,file,param1,param2,success_rate,avg_value,avg_generations,time_ms\n";
 
-    for (const string& filename : testFiles) {
+    long long globalStart = nowMs();
+
+    int done = 0;
+    int totalTasks = testFiles.size() * 6 * 4; // approx (możesz doprecyzować)
+
+    for (int fi = 0; fi < (int)testFiles.size(); fi++) {
+
+        string filename = testFiles[fi];
         vector<Item> items = loadItemsFromCSV(filename);
         if (items.empty()) continue;
 
-        cout << "\n>>> ANALIZA PLIKU: " << filename << " <<<\n";
+        cout << "\nFILE: " << filename << endl;
 
+        // =========================
+        // 1. POPULATION
+        // =========================
         for (int pop : populations) {
-            for (auto cross : crossovers) {
-                for (auto mut : mutations) {
 
-                    cout << "Test: Pop=" << pop << " Cross=" << crossoverToStr(cross) << " Mut=" << mutationToStr(mut) << endl;
+            auto start = nowMs();
 
-                    double totalValue = 0.0;
-                    double totalGenerations = 0.0;
-                    int successCount = 0;
-                    int maxVal = 0;
+            double totalValue = 0;
+            double totalGen = 0;
+            int success = 0;
 
-                    GAConfig config;
-                    config.populationSize = pop;
-                    config.crossoverType = cross;
-                    config.mutationType = mut;
+            GAConfig config{pop, UNIFORM, BIT_FLIP};
 
-                    for (int run = 1; run <= RUNS; run++) {
-                        AlgorithmStats stats = runAlgorithm(items, false, config);
+            #pragma omp parallel for reduction(+:success,totalValue,totalGen)
+            for (int i = 0; i < RUNS; i++) {
 
-                        // Zapis surowych danych
-                        details << filename << "," << pop << "," << crossoverToStr(cross) << ","
-                                << mutationToStr(mut) << "," << run << ","
-                                << (stats.foundCorrect ? 1 : 0) << "," << stats.bestValue << ","
-                                << stats.generationsUsed << "\n";
+                auto stats = runAlgorithm(items, false, config);
 
-                        if (stats.foundCorrect) {
-                            successCount++;
-                            totalValue += stats.bestValue;
-                            totalGenerations += stats.generationsUsed;
-                            if (stats.bestValue > maxVal) maxVal = stats.bestValue;
-                        }
+                if (stats.foundCorrect) {
+                    success++;
+                    totalValue += stats.bestValue;
+                    totalGen += stats.generationsUsed;
+                }
 
-                        if (run % 10 == 0) cout << "Progress: " << run << "%\r" << flush;
-                    }
+                if (i % 10 == 0)
+                    showProgress("[POP]", i, RUNS);
+            }
 
-                    // Obliczanie średnich i zapis do podsumowania
-                    double successRate = (double)successCount / RUNS * 100.0;
-                    double avgValue = (successCount > 0) ? totalValue / successCount : 0;
-                    double avgGens = (successCount > 0) ? totalGenerations / successCount : 0;
+            auto end = nowMs();
 
-                    summary << filename << "," << pop << "," << crossoverToStr(cross) << ","
-                            << mutationToStr(mut) << "," << fixed << setprecision(2)
-                            << successRate << "," << avgValue << "," << avgGens << "," << maxVal << "\n";
+            {
+                lock_guard<mutex> lock(csvMutex);
+                summary << "population," << filename << "," << pop << ",-,"
+                        << (100.0 * success / RUNS) << ","
+                        << (success ? totalValue / success : 0) << ","
+                        << (success ? totalGen / success : 0) << ","
+                        << (end - start) << "\n";
+                summary.flush();
+            }
+
+            done++;
+            printETA(done, totalTasks, globalStart);
+
+        }
+
+        // =========================
+        // 2. CROSSOVER
+        // =========================
+        for (auto cross : crossovers) {
+
+            auto start = nowMs();
+
+            double totalValue = 0;
+            double totalGen = 0;
+            int success = 0;
+
+            GAConfig config{200, cross, BIT_FLIP};
+
+            #pragma omp parallel for reduction(+:success,totalValue,totalGen)
+            for (int i = 0; i < RUNS; i++) {
+
+                auto stats = runAlgorithm(items, false, config);
+
+                if (stats.foundCorrect) {
+                    success++;
+                    totalValue += stats.bestValue;
+                    totalGen += stats.generationsUsed;
                 }
             }
+
+            auto end = nowMs();
+
+            {
+                lock_guard<mutex> lock(csvMutex);
+                summary << "crossover," << filename << "," << crossoverToStr(cross) << ",-,"
+                        << (100.0 * success / RUNS) << ","
+                        << (success ? totalValue / success : 0) << ","
+                        << (success ? totalGen / success : 0) << ","
+                        << (end - start) << "\n";
+                summary.flush();
+            }
+
+            done++;
+            printETA(done, totalTasks, globalStart);
+        }
+
+        cout << "\n[MUTATION TYPE]\n";
+
+        for (auto mut : mutations) {
+
+            auto start = nowMs();
+
+            double totalValue = 0;
+            double totalGen = 0;
+            int success = 0;
+
+            GAConfig config{200, UNIFORM, mut};
+
+            #pragma omp parallel for reduction(+:success,totalValue,totalGen)
+            for (int i = 0; i < RUNS; i++) {
+
+                auto stats = runAlgorithm(items, false, config);
+
+                if (stats.foundCorrect) {
+                    success++;
+                    totalValue += stats.bestValue;
+                    totalGen += stats.generationsUsed;
+                }
+
+                if (i % 10 == 0)
+                    showProgress("[MUT]", i, RUNS);
+            }
+
+            auto end = nowMs();
+
+            {
+                lock_guard<mutex> lock(csvMutex);
+
+                summary << "mutation_type," << filename << "," << mutationToStr(mut) << ",-,"
+                        << (100.0 * success / RUNS) << ","
+                        << (success ? totalValue / success : 0) << ","
+                        << (success ? totalGen / success : 0) << ","
+                        << (end - start) << "\n";
+
+                summary.flush();
+            }
+
+            done++;
+            printETA(done, totalTasks, globalStart);
+        }
+
+        cout << "\n[MUTATION RATE]\n";
+
+        for (double rate : mutationRates) {
+
+            MUTATION_RATE = rate;
+
+            auto start = nowMs();
+
+            double totalValue = 0;
+            double totalGen = 0;
+            int success = 0;
+
+            GAConfig config{200, UNIFORM, BIT_FLIP};
+
+            #pragma omp parallel for reduction(+:success,totalValue,totalGen)
+            for (int i = 0; i < RUNS; i++) {
+
+                auto stats = runAlgorithm(items, false, config);
+
+                if (stats.foundCorrect) {
+                    success++;
+                    totalValue += stats.bestValue;
+                    totalGen += stats.generationsUsed;
+                }
+
+                if (i % 10 == 0)
+                    showProgress("[MUTRATE]", i, RUNS);
+            }
+
+            auto end = nowMs();
+
+            {
+                lock_guard<mutex> lock(csvMutex);
+
+                summary << "mutation_rate," << filename << "," << rate << ",-,"
+                        << (100.0 * success / RUNS) << ","
+                        << (success ? totalValue / success : 0) << ","
+                        << (success ? totalGen / success : 0) << ","
+                        << (end - start) << "\n";
+
+                summary.flush();
+            }
+
+            done++;
+            printETA(done, totalTasks, globalStart);
+        }
+
+
+        cout << "\n[TOURNAMENT]\n";
+
+        for (int t : tournamentSizes) {
+
+            TOURNAMENT_SIZE = t;
+
+            auto start = nowMs();
+
+            double totalValue = 0;
+            double totalGen = 0;
+            int success = 0;
+
+            GAConfig config{200, UNIFORM, BIT_FLIP};
+
+            #pragma omp parallel for reduction(+:success,totalValue,totalGen)
+            for (int i = 0; i < RUNS; i++) {
+
+                auto stats = runAlgorithm(items, false, config);
+
+                if (stats.foundCorrect) {
+                    success++;
+                    totalValue += stats.bestValue;
+                    totalGen += stats.generationsUsed;
+                }
+
+                if (i % 10 == 0)
+                    showProgress("[TURN]", i, RUNS);
+            }
+
+            auto end = nowMs();
+
+            {
+                lock_guard<mutex> lock(csvMutex);
+
+                summary << "tournament," << filename << "," << t << ",-,"
+                        << (100.0 * success / RUNS) << ","
+                        << (success ? totalValue / success : 0) << ","
+                        << (success ? totalGen / success : 0) << ","
+                        << (end - start) << "\n";
+
+                summary.flush();
+            }
+
+            done++;
+            printETA(done, totalTasks, globalStart);
+        }
+
+
+
+        cout << "\n[STOP CONDITION]\n";
+
+        for (int limit : stopLimits) {
+
+            SAME_FITNESS_LIMIT = limit;
+
+            auto start = nowMs();
+
+            double totalValue = 0;
+            double totalGen = 0;
+            int success = 0;
+
+            GAConfig config{200, UNIFORM, BIT_FLIP};
+
+            #pragma omp parallel for reduction(+:success,totalValue,totalGen)
+            for (int i = 0; i < RUNS; i++) {
+
+                auto stats = runAlgorithm(items, false, config);
+
+                if (stats.foundCorrect) {
+                    success++;
+                    totalValue += stats.bestValue;
+                    totalGen += stats.generationsUsed;
+                }
+
+                if (i % 10 == 0)
+                    showProgress("[STOP]", i, RUNS);
+            }
+
+            auto end = nowMs();
+
+            {
+                lock_guard<mutex> lock(csvMutex);
+
+                summary << "stop_condition," << filename << "," << limit << ",-,"
+                        << (100.0 * success / RUNS) << ","
+                        << (success ? totalValue / success : 0) << ","
+                        << (success ? totalGen / success : 0) << ","
+                        << (end - start) << "\n";
+
+                summary.flush();
+            }
+
+            done++;
+            printETA(done, totalTasks, globalStart);
         }
     }
 
-    details.close();
-    summary.close();
-
-    cout << "\nZakonczono! Wyniki zapisano w results_summary.csv i results_details.csv\n";
-    return 0;
+    cout << "\nDONE\n";
 }
