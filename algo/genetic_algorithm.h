@@ -57,7 +57,7 @@ extern int MAX_VOLUME;
 
 extern int SAME_FITNESS_LIMIT;
 
-// Funkcje
+// Funkcje do tesów b
 void printItems(const std::vector<Item>& items);
 AlgorithmStats runAlgorithm(const std::vector<Item>& items, bool printLogs, const GAConfig& config);
 #endif
