@@ -13,17 +13,12 @@
 using namespace std;
 using namespace chrono;
 
-// =========================
-// 🔥 GLOBAL SAFETY / LOGGING
-// =========================
 std::mutex csvMutex;
 
 
 
 
-// =========================
-// 🔥 TIME
-// =========================
+
 long long nowMs() {
     return duration_cast<milliseconds>(
         high_resolution_clock::now().time_since_epoch()
@@ -32,9 +27,6 @@ long long nowMs() {
 
 
 
-// =========================
-// 🔥 ETA
-// =========================
 void printETA(int done, int total, long long startMs) {
     if (done == 0) return;
 
@@ -47,9 +39,7 @@ void printETA(int done, int total, long long startMs) {
     cout << "\nETA: " << remaining / 60.0 << " min\n";
 }
 
-// =========================
-// helpers
-// =========================
+
 string crossoverToStr(CrossoverType t) {
     return t == UNIFORM ? "uniform" : "two_point";
 }
@@ -58,9 +48,7 @@ string mutationToStr(MutationType t) {
     return t == BIT_FLIP ? "bit_flip" : "random_reset";
 }
 
-// =========================
-// PROGRESS
-// =========================
+
 void showProgress(const string& label, int i, int total) {
     if (i % 10 == 0) {
         cout << label
@@ -70,9 +58,7 @@ void showProgress(const string& label, int i, int total) {
     }
 }
 
-// =========================
-// MAIN
-// =========================
+
 int main() {
 
     ios::sync_with_stdio(false);
@@ -111,9 +97,6 @@ int main() {
 
         cout << "\nFILE: " << filename << endl;
 
-        // =========================
-        // 1. POPULATION
-        // =========================
         for (int pop : populations) {
 
             auto start = nowMs();
@@ -156,9 +139,7 @@ int main() {
 
         }
 
-        // =========================
-        // 2. CROSSOVER
-        // =========================
+
         for (auto cross : crossovers) {
 
             auto start = nowMs();
